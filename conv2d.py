@@ -6,7 +6,7 @@ import time
 from torch.nn import Conv2d, Parameter
 
 
-class CNNBasic:
+class Conv2dBasic:
     def __init__(self, in_fea_size,
                  out_fea_size,
                  kernel_size,
@@ -61,9 +61,9 @@ class CNNBasic:
         return -1
 
 
-class CNN3x3(CNNBasic):
+class Conv3x3(Conv2dBasic):
     def __init__(self, in_fea_size, out_fea_size, padding=1, stride=1):
-        super(CNN3x3, self).__init__(in_fea_size=in_fea_size,
+        super(Conv3x3, self).__init__(in_fea_size=in_fea_size,
                                      out_fea_size=out_fea_size,
                                      kernel_size=3,
                                      padding=padding,
@@ -85,7 +85,7 @@ class CNN3x3(CNNBasic):
 
 
 if __name__ == '__main__':
-    cnn = CNN3x3(in_fea_size=64, out_fea_size=128, padding=1, stride=1)
+    cnn = Conv3x3(in_fea_size=64, out_fea_size=128, padding=1, stride=1)
     cnn_torch = Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1, stride=1, bias=False)
     # apply cnn weight to cnn_torch weight
     cnn_torch.weight = Parameter(torch.from_numpy(cnn.W))
