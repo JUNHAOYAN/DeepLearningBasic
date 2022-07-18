@@ -64,10 +64,10 @@ class Conv2dBasic:
 class Conv3x3(Conv2dBasic):
     def __init__(self, in_fea_size, out_fea_size, padding=1, stride=1):
         super(Conv3x3, self).__init__(in_fea_size=in_fea_size,
-                                     out_fea_size=out_fea_size,
-                                     kernel_size=3,
-                                     padding=padding,
-                                     stride=stride)
+                                      out_fea_size=out_fea_size,
+                                      kernel_size=3,
+                                      padding=padding,
+                                      stride=stride)
 
     def __call__(self, x):
         col = self._im2col(x)
