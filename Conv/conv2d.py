@@ -2,15 +2,15 @@
 # todo: add dilation and bias
 import numpy as np
 import torch
-import time
 from torch.nn import Conv2d, Parameter
-from torch.nn.functional import fold
+
+from base_class import Base
 
 np.random.seed(123)
 torch.random.manual_seed(123)
 
 
-class Conv2dSelf:
+class Conv2dSelf(Base):
     def __init__(self, in_fea_size,
                  out_fea_size,
                  kernel_size,
@@ -84,43 +84,22 @@ class Conv2dSelf:
                 self.stride * j: self.stride * j + self.kernel_size] += np.ones(
                     [self.xtm[0], self.xtm[1], self.kernel_size, self.kernel_size])
 
-        weight[weight == 0] = 1
-        image /= weight
-        # remove padding
-        image = image[:, :, self.padding: -self.padding, self.padding: -self.padding]
+        # weight[weight == 0] = 1
+        # image /= weight
 
-        return image
+        return image[:, :, self.padding: -self.padding, self.padding: -self.padding]
 
     def _after_conv_size(self, x):
         return (x + 2 * self.padding - self.kernel_size) // self.stride + 1
 
     def forward(self, x):
-        self.__call__(x)
-
-    def backward(self, dout):
-        """
-        :param dout: derivative from upper layer in shape [B, C, H, W]
-        :return: derivative of current layer
-        """
-        # shape [B, C, num of patches]
-        dout = np.reshape(dout, (dout.shape[0], dout.shape[1], -1))
-        # dw = det * cacheX.T
-        self.dw = np.matmul(dout, np.swapaxes(self.cacheX, 1, 2))
-        self.dw = np.sum(self.dw, axis=0) / dout.shape[0]
-        self.dw = self.dw.reshape([self.out_fea_size, self.in_fea_size, self.kernel_size, self.kernel_size])
-        # dx = cacheW.T * det
-        dx = np.matmul(self.cacheW.T, dout)
-        dx = self._col2im(dx)
-
-        return dx
-
-    def __call__(self, x):
         """
         :param x: input data with shape (B, C, H, W)
         :return: result after convolution
         """
 
         # shape [B, k, num of patches]
+        x = x.copy()
         col = self._im2col(x)
         # store x
         self.cacheX = col.copy()
@@ -136,6 +115,24 @@ class Conv2dSelf:
 
         return out
 
+    def backward(self, dout):
+        """
+        :param dout: derivative from upper layer in shape [B, C, H, W]
+        :return: derivative of current layer
+        """
+        # shape [B, C, num of patches]
+        dout = dout.copy()
+        dout = np.reshape(dout, (dout.shape[0], dout.shape[1], -1))
+        # dw = det * cacheX.T
+        self.dw = np.matmul(dout, np.swapaxes(self.cacheX, 1, 2))
+        self.dw = np.sum(self.dw, axis=0) / dout.shape[0]
+        self.dw = self.dw.reshape([self.out_fea_size, self.in_fea_size, self.kernel_size, self.kernel_size])
+        # dx = cacheW.T * det
+        dx = np.matmul(self.cacheW.T, dout)
+        dx = self._col2im(dx)
+
+        return dx
+
 
 def test00():
     image = np.random.randn(2, 3, 32, 32)
@@ -143,8 +140,8 @@ def test00():
     conv_02 = Conv2dSelf(32, 16, 3, padding=1, stride=2)
 
     # forward
-    out_01 = conv_01(image)
-    out_02 = conv_02(out_01)
+    out_01 = conv_01.forward(image)
+    out_02 = conv_02.forward(out_01)
 
     conv_01_torch = Conv2d(3, 32, 3, padding=1, stride=2, bias=False)
     conv_02_torch = Conv2d(32, 16, 3, padding=1, stride=2, bias=False)
@@ -155,7 +152,8 @@ def test00():
     conv_02_torch.weight = Parameter(torch.from_numpy(conv_02.W))
     out_02_torch = conv_02_torch(out_01_torch)
 
-    print(f"diff of forward: {np.sum(out_02_torch.detach().numpy() - out_02)}")
+    print(f"diff of forward conv01: {np.sum(out_01_torch.detach().numpy() - out_01)}")
+    print(f"diff of forward conv02: {np.sum(out_01_torch.detach().numpy() - out_01)}")
 
     # backward
     mean = torch.mean(out_02_torch)
@@ -171,6 +169,7 @@ def test00():
     dw_conv_01 = conv_01.dw
     dw_conv_02 = conv_02.dw
 
+    # todo: the backward pass results is not the same with pytorch
     print(f"diff of dw in conv_01: {np.sum(dw_conv_01 - dw_conv_01_torch)}")
     print(f"diff of dw in conv_02: {np.sum(dw_conv_02 - dw_conv_02_torch)}")
 
