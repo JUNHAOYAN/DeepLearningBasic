@@ -1,1 +1,1 @@
-from act_func import *
+from .act_func import *

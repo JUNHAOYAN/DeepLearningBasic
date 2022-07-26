@@ -4,35 +4,28 @@ import numpy as np
 import torch
 from torch.nn import Conv2d, Parameter
 
-from base_class import Base
+from Conv.ConvBaseClass import ConvBase
 
 np.random.seed(123)
 torch.random.manual_seed(123)
 
 
-class Conv2dSelf(Base):
-    def __init__(self, in_fea_size,
-                 out_fea_size,
-                 kernel_size,
-                 padding,
-                 stride):
+class Conv2dSelf(ConvBase):
+    def __init__(self, in_fea_size, out_fea_size, kernel_size, padding, stride):
+        super(Conv2dSelf, self).__init__()
         self.in_fea_size = in_fea_size
         self.out_fea_size = out_fea_size
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
-        # store image information
-        self.xtm = None
-        self.h_after = -1
-        self.w_after = -1
         # creat convolutional blocks
         self.W = np.random.randn(self.out_fea_size, self.in_fea_size, self.kernel_size, self.kernel_size)
 
         # derivative, k = in_fea * kernel size * kernel size
         # shape [B, k, num of patches]
-        self.cacheX = None
+        # self.cacheX = None
         # shape [out feature size, k]
-        self.cacheW = None
+        # self.cacheW = None
         # shape like self.cacheW
         self.dw = None
 
@@ -49,20 +42,23 @@ class Conv2dSelf(Base):
         x_padded = np.pad(x, ((0,), (0,), (self.padding,), (self.padding,)), mode="constant", constant_values=0)
 
         # h, w after convolution
-        self.h_after, self.w_after = self._after_conv_size(h), self._after_conv_size(w)
+        h_after, w_after = self._after_conv_size(h), self._after_conv_size(w)
 
-        self.xtm = x_padded.shape
+        self._cache["h_after"] = h_after
+        self._cache["w_after"] = w_after
+        self._cache["x_padded_shape"] = x_padded.shape
+
         # patches size
-        patches_size = self.h_after * self.w_after
+        patches_size = h_after * w_after
         # total length of one patch
         k = self.kernel_size * self.kernel_size * self.in_fea_size
         col = np.zeros([b, k, patches_size], dtype=np.float64)
 
-        for i in range(self.h_after):
-            for j in range(self.w_after):
-                col[:, :, i * self.w_after + j] = x_padded[:, :,
-                                                  self.stride * i: self.stride * i + self.kernel_size,
-                                                  self.stride * j: self.stride * j + self.kernel_size].reshape([b, -1])
+        for i in range(h_after):
+            for j in range(w_after):
+                col[:, :, i * w_after + j] = x_padded[:, :,
+                                             self.stride * i: self.stride * i + self.kernel_size,
+                                             self.stride * j: self.stride * j + self.kernel_size].reshape([b, -1])
 
         self._col2im(col)
         return col
@@ -73,16 +69,20 @@ class Conv2dSelf(Base):
          :param x: patch matrix with shape [B, k, num of patches]
          :return: input with data with shape [B, C, H, W]
          """
-        image = np.zeros(self.xtm)
-        weight = np.zeros(self.xtm)
-        for i in range(self.h_after):
-            for j in range(self.w_after):
+        h_after, w_after = self._cache["h_after"], self._cache["w_after"]
+
+        image = np.zeros(self._cache["x_padded_shape"])
+        weight = np.zeros(self._cache["x_padded_shape"])
+        for i in range(h_after):
+            for j in range(w_after):
                 image[:, :, self.stride * i: self.stride * i + self.kernel_size,
-                self.stride * j: self.stride * j + self.kernel_size] += x[:, :, i * self.w_after + j].reshape(
-                    [self.xtm[0], self.xtm[1], self.kernel_size, self.kernel_size])
+                self.stride * j: self.stride * j + self.kernel_size] += x[:, :, i * w_after + j].reshape(
+                    [self._cache["x_padded_shape"][0], self._cache["x_padded_shape"][1], self.kernel_size,
+                     self.kernel_size])
                 weight[:, :, self.stride * i: self.stride * i + self.kernel_size,
                 self.stride * j: self.stride * j + self.kernel_size] += np.ones(
-                    [self.xtm[0], self.xtm[1], self.kernel_size, self.kernel_size])
+                    [self._cache["x_padded_shape"][0], self._cache["x_padded_shape"][1], self.kernel_size,
+                     self.kernel_size])
 
         # weight[weight == 0] = 1
         # image /= weight
@@ -101,17 +101,18 @@ class Conv2dSelf(Base):
         # shape [B, k, num of patches]
         x = x.copy()
         col = self._im2col(x)
-        # store x
-        self.cacheX = col.copy()
+        # store x in col
+        self._cache["col"] = col.copy()
         # shape [out feature size, k]
-        self.cacheW = self.W.reshape([self.out_fea_size, self.kernel_size * self.kernel_size * self.in_fea_size]).copy()
+        self._cache["W"] = self.W.reshape(
+            [self.out_fea_size, self.kernel_size * self.kernel_size * self.in_fea_size]).copy()
 
         # W: [out feature size, k] * col: [B, k, num of patches] = out: [B, out feature size, num of patches]
         out = np.matmul(self.W.reshape([self.out_fea_size, self.kernel_size * self.kernel_size * self.in_fea_size]),
                         col)
 
         # out: [B, out feature size, h, w]
-        out = np.reshape(out, [out.shape[0], out.shape[1], self.h_after, self.w_after])
+        out = np.reshape(out, [out.shape[0], out.shape[1], self._cache["h_after"], self._cache["w_after"]])
 
         return out
 
@@ -124,14 +125,17 @@ class Conv2dSelf(Base):
         dout = dout.copy()
         dout = np.reshape(dout, (dout.shape[0], dout.shape[1], -1))
         # dw = det * cacheX.T
-        self.dw = np.matmul(dout, np.swapaxes(self.cacheX, 1, 2))
+        self.dw = np.matmul(dout, np.swapaxes(self._cache["col"], 1, 2))
         self.dw = np.sum(self.dw, axis=0) / dout.shape[0]
         self.dw = self.dw.reshape([self.out_fea_size, self.in_fea_size, self.kernel_size, self.kernel_size])
         # dx = cacheW.T * det
-        dx = np.matmul(self.cacheW.T, dout)
+        dx = np.matmul(self._cache["W"].T, dout)
         dx = self._col2im(dx)
 
         return dx
+
+    def __str__(self):
+        print(self.W.shape)
 
 
 def test00():
@@ -162,7 +166,7 @@ def test00():
     dw_conv_02_torch = conv_02_torch.weight.grad.data.numpy()
 
     n = out_02.shape[0] * out_02.shape[1] * out_02.shape[2] * out_02.shape[3]
-    det = np.ones_like(out_02) * mean.detach().numpy() / n
+    det = np.ones_like(out_02) / n
     dx_02 = conv_02.backward(det)
     dx_01 = conv_01.backward(dx_02)
 

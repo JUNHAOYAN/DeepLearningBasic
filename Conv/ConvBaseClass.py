@@ -1,11 +1,11 @@
 from abc import abstractmethod
-
+from cache import Cache
 import numpy as np
 
 
-class Base:
+class ConvBase:
     def __init__(self):
-        self._cache = None
+        self._cache = Cache()
 
     @abstractmethod
     def forward(self, x: np.ndarray):
@@ -15,9 +15,5 @@ class Base:
     def backward(self, dout: np.ndarray):
         pass
 
-    def __str__(self):
-        return "base class"
-
-
-if __name__ == '__main__':
-    print(Base())
+    def get_cache_keys(self):
+        print(self._cache)
