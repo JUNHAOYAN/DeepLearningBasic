@@ -1,4 +1,7 @@
+import time
 import numpy as np
+import torchvision
+import torch
 
 
 def iou(x: np.array, y: np.array):
@@ -23,7 +26,7 @@ def box_overlap(x: np.array, y: np.array):
     """
     calculate the overlapping area of x and y
     :param x: in shape [B, 4], [[x1, y1, x2, y2], ...]
-    :param y: in shape [B, 4], [[x1, y1, x2, y2], ...]
+    :param y: in shape [, 4], [[x1, y1, x2, y2], ...]
     :return: in shape [B, 1]
     """
     if len(y.shape) == 1:
@@ -45,8 +48,15 @@ def box_overlap(x: np.array, y: np.array):
 
 
 if __name__ == '__main__':
-    bbox_1 = np.asarray([[3, 4, 6, 7], [4, 4, 0, 0]])
+    bbox_1 = np.asarray([[3, 4, 6, 7], [0, 0, 4, 4], [1, 2, 7, 9]])
     bbox_2 = np.asarray([[3, 4, 6, 7], [5, 4, 6, 7]])
 
-    diff = iou(bbox_1, bbox_2)
-    print(diff)
+    start = time.time()
+    result_torch = torchvision.ops.box_iou(torch.from_numpy(bbox_1), torch.from_numpy(bbox_2))
+    end = time.time()
+    print(end - start)
+
+    start = time.time()
+    result = iou(bbox_1, bbox_2)
+    end = time.time()
+    print(end - start)
